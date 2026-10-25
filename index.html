@@ -210,8 +210,23 @@ function startDirs(q,from){const all=[[1,0],[-1,0],[0,1],[0,-1]];let ds=from===u
  const ok=d=>inOuter({x:q.x+d[0]*300,y:q.y+d[1]*300})!==false;
  let r=ds.filter(d=>!al.some(a=>a[0]==d[0]&&a[1]==d[1])&&ok(d));
  if(!r.length)r=ds.filter(ok);if(!r.length)r=ds;return r}
+/* 直角(L字)作図: 1点目→角(2点目)をクリックした後、終点を押さえるまでは角の位置も固定せず、
+   カーソルの動きに合わせて線全体が追従する。クリックした角の位置には軽く吸着(ゆっくり動かすと元の位置に戻る)。 */
+function chainL(p){const S0=chain[0],C0=chain[1],th=26/V.s,k1=Math.abs(C0.x-S0.x)>=Math.abs(C0.y-S0.y)?'x':'y',o1=k1=='x'?'y':'x',sg1=Math.sign(C0[k1]-S0[k1])||1,lat=p[o1]-S0[o1];
+ if(Math.abs(lat)<Math.max(50,th*1.2))return null;/* 1本目の線上付近は従来どおり(同一線上に延長) */
+ let c1;if(Math.abs(p[k1]-C0[k1])<16/V.s)c1=C0[k1];
+ else{let bd=th,bv=null;D.pts.forEach(P=>{const d=Math.abs(P[k1]-p[k1]);if(d<bd){bd=d;bv=P[k1]}});c1=bv!==null?bv:Math.round(p[k1]/50)*50}
+ if((c1-S0[k1])*sg1<50)c1=S0[k1]+sg1*50;
+ const C={x:0,y:0};C[k1]=c1;C[o1]=S0[o1];
+ const sg2=Math.sign(lat)||1,q={x:0,y:0};q[k1]=c1;q[o1]=p[o1];let best=null;
+ D.walls.forEach(w=>{if(wa(w)!=(o1=='x'?1:0))return;const[P,Q]=wp(w),cc=P[o1];if(Math.abs(cc-S0[o1])<50||(cc-S0[o1])*sg2<0)return;
+  const ext=w.kind=='outer'?OD(w)[2]:w.t/2,d=Math.abs(cc-q[o1]);if(d>th+ext)return;
+  const lo=Math.min(P[k1],Q[k1])-th,hi=Math.max(P[k1],Q[k1])+th;if(q[k1]<lo||q[k1]>hi)return;if(!best||d<best.d)best={d,c:cc}});
+ if(best){q[o1]=best.c;return{q,c:C,snap:1}}
+ return{q,c:C,snap:0}}
 function chainPt(p){
  if(!chain){const r=chainPt0(p);if(r.snap)r.dirs=startDirs(r.q,r.from);return r}
+ if(chain.length==2&&chain.adj){const rl=chainL(p);if(rl)return rl}
  const a=chain.at(-1),th=26/V.s,thr=14/V.s,dx=p.x-a.x,dy=p.y-a.y,adx=Math.abs(dx),ady=Math.abs(dy);let k,sg_=1,len=0;
  if(chain.length==1&&chain.dirs&&chain.dirs.length){
   let b=null;chain.dirs.forEach(d=>{const pr=dx*d[0]+dy*d[1];if(!b||pr>b.pr)b={d,pr}});
@@ -238,7 +253,7 @@ function pbarMake(){const w=$('wr'),b=document.createElement('div');b.id='pbar';
  add('↶ 1点戻す',chainBack).disabled=!n;add('✔ 確定',()=>chainFinish()).disabled=n<2;add('✕ 中止',chainCancel).disabled=!n;
  w.appendChild(b)}
 
-function chainAdd(p){const r=chainPt(p);if(r.none)return;const{q,snap,from,dirs}=r;if(!chain){chain=[q];chain.from=from;chain.dirs=dirs;chain.ax=null;chain.dr=null}else{const a=chain.at(-1);if(Math.hypot(q.x-a.x,q.y-a.y)<50)return;chain.push(q);chain.ax=null;chain.dr=null;if(snap){chainFinish();return}}ui();render()}
+function chainAdd(p){const r=chainPt(p);if(r.none)return;const{q,snap,from,dirs,c}=r;if(!chain){chain=[q];chain.from=from;chain.dirs=dirs;chain.ax=null;chain.dr=null}else{if(c)chain[1]={x:c.x,y:c.y};const a=chain.at(-1);if(Math.hypot(q.x-a.x,q.y-a.y)<50)return;chain.push(q);chain.ax=null;chain.dr=null;if(chain.length==2)chain.adj=true;if(snap){chainFinish();return}}ui();render()}
 /* ---- 間仕切りの選択・移動 ----
  直角(L/コの字)に連続した間仕切りを1本の「連なり」として扱い、両端部(○)を押さえて動かすと、反対側の端部は動かさず、
  直角を保ったまま全体が追従する。壁本体をドラッグすると壁に直交する方向へ平行移動(接続する壁は伸縮)。 */
@@ -374,8 +389,24 @@ function partGeo(){
     cuts.push({w:o2,r0:rc-half,r1:rc+half,q0:Math.min(sd*hi2,sd*h2),q1:Math.max(sd*hi2,sd*h2)});
     fills.push({pass:2,c:'#f3f4f6',p:[G(rc-half,sd*hi2),G(rc+half,sd*hi2),G(rc+half,sd*h2),G(rc-half,sd*h2)]})});
    [1,-1].forEach(qs=>fills.push({pass:3,c:'#9ca3af',p:[P_(sp(hoI(e)),qs*hin),P_(sp(hoF(e)),qs*hin),P_(sp(hoF(e)),qs*half),P_(sp(hoI(e)),qs*half)]}))})});
- const out=[];segs.forEach(s0=>{let pc=[s0];cuts.filter(c=>c.w===s0.w).forEach(c=>{const G2=fr(c.w),tr=p=>{const d={x:p.x-G2.A.x,y:p.y-G2.A.y};return[dot(d,G2.u),dot(d,G2.n)]};pc=pc.flatMap(s=>clipOut(s,tr,c))});out.push(...pc)});
- fills.sort((a,b)=>a.pass-b.pass);return{fills,segs:out}}
+ /* 交差(十字): 互いの途中で交わる間仕切り。長い方を「通し壁」とし、通し壁のボードを横切る壁の幅で切り、
+   横切る壁は通し壁の芯面(下地面)で止めて納める(T字と同じ納まり)。移動などで交差しても毎回自動で再計算される。 */
+ const xtra=[];
+ PW.forEach((w1,i)=>PW.forEach((w2,j)=>{if(j<=i||wa(w1)==wa(w2))return;
+  const F1=fr(w1),F2=fr(w2),hz=wa(w1)==0?F1:F2,vt=wa(w1)==0?F2:F1,X={x:vt.A.x,y:hz.A.y},
+   rr=(F)=>dot({x:X.x-F.A.x,y:X.y-F.A.y},F.u),ll=(F)=>Math.abs(dot({x:X.x-F.A.x,y:X.y-F.A.y},F.n)),r1=rr(F1),r2=rr(F2),m=2;
+  if(r1<=m||r1>=F1.L-m||r2<=m||r2>=F2.L-m||ll(F1)>1.5||ll(F2)>1.5)return;
+  const[T,W,FT,FW,rT,rW]=F1.L>=F2.L?[w1,w2,F1,F2,r1,r2]:[w2,w1,F2,F1,r2,r1],
+   hT=T.t/2,iT=hT-T.bd,hW=W.t/2,iW=hW-W.bd,G=(F,r,q)=>pt(F.A,F.u,F.n,r,q);
+  cuts.push({w:W,r0:rW-iT,r1:rW+iT,q0:-hW,q1:hW,tys:['F','I']});
+  [1,-1].forEach(sd=>{
+   cuts.push({w:T,r0:rT-hW,r1:rT+hW,q0:Math.min(sd*iT,sd*hT),q1:Math.max(sd*iT,sd*hT)});
+   fills.push({pass:2,c:'#f3f4f6',p:[G(FT,rT-hW,sd*iT),G(FT,rT+hW,sd*iT),G(FT,rT+hW,sd*hT),G(FT,rT-hW,sd*hT)]});
+   [1,-1].forEach(qs=>{fills.push({pass:3,c:'#9ca3af',p:[G(FW,rW+sd*iT,qs*iW),G(FW,rW+sd*hT,qs*iW),G(FW,rW+sd*hT,qs*hW),G(FW,rW+sd*iT,qs*hW)]});
+    xtra.push({a:G(FW,rW+sd*iT,qs*iW),b:G(FW,rW+sd*iT,qs*hW),ty:'I',lay:'PART_BOARD',w:W})})});
+  fills.push({pass:2,c:'#f3f4f6',p:[G(FW,rW-iT,-hW),G(FW,rW+iT,-hW),G(FW,rW+iT,hW),G(FW,rW-iT,hW)]})}));
+  const out=[];segs.forEach(s0=>{let pc=[s0];cuts.filter(c=>c.w===s0.w&&(!c.tys||c.tys.includes(s0.ty))).forEach(c=>{const G2=fr(c.w),tr=p=>{const d={x:p.x-G2.A.x,y:p.y-G2.A.y};return[dot(d,G2.u),dot(d,G2.n)]};pc=pc.flatMap(s=>clipOut(s,tr,c))});out.push(...pc)});
+ fills.sort((a,b)=>a.pass-b.pass);return{fills,segs:out.concat(xtra)}}
 function alignPart(){prepOut();const os=D.walls.filter(w=>w.kind=='outer'),side=(o,k)=>{const q=oq(o,0,1),cn=(q[0][k]+q[1][k]+q[2][k]+q[3][k])/4;return Math.sign(cn-D.pts[o.a][k])||1};
 /* 1) 外周と平行に近い間仕切り: 仕上げ面にぴったり付ける(室内側=ライン上、下地側=下地の外面) */
 D.walls.forEach(w=>{if(w.kind!='part')return;const ax=wa(w),pk=ax==0?'y':'x',lk=ax==0?'x':'y',A=D.pts[w.a],B=D.pts[w.b],lo=Math.min(A[lk],B[lk]),hi=Math.max(A[lk],B[lk]);let best=null;
@@ -550,10 +581,13 @@ function draw(c,V,k,ui,pdf){
   c.font=`${11*k}px sans-serif`;const wd=Math.max(...t.map(s=>c.measureText(s).width))+8*k;c.fillStyle='#ffffffd9';c.fillRect(x-wd/2,y-8*k*t.length,wd,16*k*t.length);c.fillStyle='#111';t.forEach((s,i)=>c.fillText(s,x,y+(i-(t.length-1)/2)*14*k))});
  if(ui){if(stk&&stk.length>1){c.strokeStyle='#2563eb';c.lineWidth=2;c.beginPath();stk.forEach((p,i)=>i?c.lineTo(...S(p)):c.moveTo(...S(p)));c.stroke()}
   if(ghost){const g=ghost,[A,B]=wp(g.w),q=S({x:A.x+(B.x-A.x)*g.t,y:A.y+(B.y-A.y)*g.t});c.fillStyle='#f59e0b';c.beginPath();c.arc(q[0],q[1],8,0,7);c.fill()}
-  if(chain){c.strokeStyle='#2563eb';c.lineWidth=2;c.beginPath();chain.forEach((p,i)=>i?c.lineTo(...S(p)):c.moveTo(...S(p)));let q=null,sn=0;if(tool=='part'&&(cur||hov)){const r=chainPt(cur||hov);q=r.none?null:r.q;sn=r.snap;if(q)c.lineTo(...S(q))}c.stroke();
-   c.fillStyle='#2563eb';chain.forEach(p=>{const[x,y]=S(p);c.beginPath();c.arc(x,y,4,0,7);c.fill()});
+  if(chain){let q=null,sn=0,cc=null;if(tool=='part'&&(cur||hov)){const r=chainPt(cur||hov);q=r.none?null:r.q;sn=r.snap;cc=r.c||null}
+   const pts=chain.map((p,i)=>i==1&&cc?cc:p);c.strokeStyle='#2563eb';c.lineWidth=2;c.beginPath();pts.forEach((p,i)=>i?c.lineTo(...S(p)):c.moveTo(...S(p)));if(q)c.lineTo(...S(q));c.stroke();
+   c.fillStyle='#2563eb';pts.forEach(p=>{const[x,y]=S(p);c.beginPath();c.arc(x,y,4,0,7);c.fill()});
+   if(cc){const[x,y]=S(cc);c.save();c.fillStyle='#fff';c.strokeStyle='#2563eb';c.lineWidth=2;c.beginPath();c.arc(x,y,7,0,7);c.fill();c.stroke();c.restore()}
    if(sn){const[x,y]=S(q);c.fillStyle='#f59e0b';c.beginPath();c.arc(x,y,7,0,7);c.fill();c.fillStyle='#2563eb'}
-   if(q){const a=chain.at(-1),L=Math.round(Math.hypot(q.x-a.x,q.y-a.y)),[x,y]=S({x:(a.x+q.x)/2,y:(a.y+q.y)/2});c.font='12px sans-serif';c.fillText(L+' mm',x,y-10)}}
+   if(q){const a=pts.at(-1),L=Math.round(Math.hypot(q.x-a.x,q.y-a.y)),[x,y]=S({x:(a.x+q.x)/2,y:(a.y+q.y)/2});c.font='12px sans-serif';c.fillText(L+' mm',x,y-10);
+    if(cc){const a0=pts[0],L1=Math.round(Math.hypot(cc.x-a0.x,cc.y-a0.y)),[x1,y1]=S({x:(a0.x+cc.x)/2,y:(a0.y+cc.y)/2});c.fillText(L1+' mm',x1+8,y1)}}}
   if(tool=='part'&&cur){const r=chainPt(cur),qq=r.none?cur:r.q;cross(c,S(qq),r.snap);if(r.snap&&!chain){const[x,y]=S(qq);c.fillStyle='#f59e0b';c.beginPath();c.arc(x,y,7,0,7);c.fill()}}}
   if(ui&&tool=='mvall'){const b=bounds();if(b){const[x0,y0]=S({x:b.x0,y:b.y0}),[x1,y1]=S({x:b.x1,y:b.y1});c.save();c.fillStyle='#2563eb14';c.strokeStyle='#2563eb';c.lineWidth=1.5;c.setLineDash([6,4]);c.fillRect(x0-6,y0-6,x1-x0+12,y1-y0+12);c.strokeRect(x0-6,y0-6,x1-x0+12,y1-y0+12);c.restore()}}
   if(ui&&tool=='meas'){const XS=hov?xsnap(hov):null;if(mp1){const[x,y]=S(mp1);c.fillStyle='#2563eb';c.beginPath();c.arc(x,y,4,0,7);c.fill()}if(XS)cross(c,S(XS.pt),XS.hit)}
@@ -868,7 +902,7 @@ function ui(){if(mode=='plan'&&tool!='eq'&&shp&&shp.startsWith('sym:'))shp=null;
  else if(tool=='eq'){h('設備を選んで図面をタップ(ドラッグで大きさ指定)。PDFをドロップすると名前を付けて追加できます');if(!(shp&&shp.startsWith('sym:')))shp=null;
   symList('e').forEach(n=>{const b=document.createElement('button');b.appendChild(symIcon(n));b.appendChild(document.createTextNode(n));if(shp=='sym:'+n)b.className='on';b.onclick=()=>{shp='sym:'+n;ui()};s.appendChild(b)});s.appendChild(dropZone('e'))}
  else if(tool=='part'){
-  if(chain){h('点 '+chain.length+' 個 ─ 十字カーソルを動かして「点を置く」。壁(橙●)に吸着して指を離す/「確定」で終了');sbBtn(s,'✔ 確定',()=>chainFinish(),'ok');sbBtn(s,'↶ 1点戻す',chainBack);sbBtn(s,'✕ 中止',chainCancel)}
+  if(chain){h(chain.length==2&&chain.adj?'角を押さえました ─ 終点を押さえるまでカーソルに合わせて線が追従します(白○が角の位置)。位置が決まったら終点を押さえてください。壁(橙●)に当たると終了/ダブルクリック・右クリック・「確定」で終了':'点 '+chain.length+' 個 ─ 十字カーソルを動かして「点を置く」。壁(橙●)に吸着して指を離す/「確定」で終了');sbBtn(s,'✔ 確定',()=>chainFinish(),'ok');sbBtn(s,'↶ 1点戻す',chainBack);sbBtn(s,'✕ 中止',chainCancel)}
   else h(HINT.part2);pbarMake()}
     else if(tool=='meas'){if(mz){const a=mz.a,b=mz.b,sp=document.createElement('span');sp.className='nm';sp.style.cssText='background:#1d4ed8;font-size:15px;padding:3px 10px';sp.textContent='測定値 '+Math.round(Math.hypot(b.x-a.x,b.y-a.y))+' mm';s.appendChild(sp);h('(横 '+Math.round(Math.abs(b.x-a.x))+' / 縦 '+Math.round(Math.abs(b.y-a.y))+')  次の2点をタップで再測定')}else h(mp1?'1点目を指定しました ─ 2点目をタップ':'2点をタップして測定(線の交点・角に自動吸着)。測定値はここに表示されます')}
  else if(tool=='sel'){h(mode=='rcp'?'設備・図形をタップで選択 → ドラッグで移動、○で拡大縮小、緑○で回転、赤×で削除':HINT.sel)}
